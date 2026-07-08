@@ -9,7 +9,7 @@ def get_main_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🛡 Group Management", callback_data="menu_group"),
          InlineKeyboardButton("📢 Channel Control", callback_data="menu_channel")],
-        [InlineKeyboardButton("🚀 Viral Marketing", callback_data="menu_viral"),
+        [InlineKeyboardButton("📡 Broadcast System", callback_data="menu_broadcast"),
          InlineKeyboardButton("⚙️ Bot Info", callback_data="menu_info")],
         [InlineKeyboardButton("Close Dashboard ❌", callback_data="close_menu")]
     ])
@@ -33,11 +33,10 @@ def get_channel_menu():
         [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="menu_main")]
     ])
 
-def get_viral_menu():
+def get_broadcast_menu():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎯 Set Target Chat", callback_data="help_settarget")],
-        [InlineKeyboardButton("🔗 Set Task Links", callback_data="help_setlinks")],
-        [InlineKeyboardButton("🖼 Make Poster Post", callback_data="help_makepost")],
+        [InlineKeyboardButton("📡 How to Broadcast", callback_data="help_broadcast")],
+        [InlineKeyboardButton("🔗 Set Viral Links", callback_data="help_setlinks")],
         [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="menu_main")]
     ])
 
@@ -50,13 +49,13 @@ async def start_menu(client: Client, message: Message):
     text = (
         "👑 **ULTIMATE ADMIN CONTROL PANEL**\n\n"
         "Welcome to your Master Bot. This bot helps you control your groups, "
-        "manage your channels, and run viral marketing campaigns.\n\n"
+        "manage your channels, and run broadcasts.\n\n"
         "Select a category below:"
     )
     await message.reply_text(text, reply_markup=get_main_menu())
 
 # ==========================================
-# ബട്ടൺ ക്ലിക്കുകൾ നിയന്ത്രിക്കുന്ന ഭാഗം
+# ബട്ടൺ ക്ലിക്കുകൾ
 # ==========================================
 
 @Client.on_callback_query()
@@ -76,9 +75,9 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         text = "📢 **Channel Control**\n\nClick a tool below to see how to use it:"
         await callback_query.edit_message_text(text, reply_markup=get_channel_menu())
         
-    elif data == "menu_viral":
-        text = "🚀 **Viral Marketing Setup**\n\nClick a step below to see instructions:"
-        await callback_query.edit_message_text(text, reply_markup=get_viral_menu())
+    elif data == "menu_broadcast":
+        text = "📡 **Broadcast System**\n\nClick a button below to see how to use the broadcast feature:"
+        await callback_query.edit_message_text(text, reply_markup=get_broadcast_menu())
         
     elif data == "menu_info":
         text = (
@@ -90,70 +89,64 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="menu_main")]])
         await callback_query.edit_message_text(text, reply_markup=btn)
 
-    # --- ഹെൽപ്പ് ഇൻസ്ട്രക്ഷനുകൾ (ഓരോ ബട്ടണിലും ഞെക്കുമ്പോൾ വരുന്നത്) ---
+    # --- ഹെൽപ്പ് ഇൻസ്ട്രക്ഷനുകൾ ---
     elif data == "help_ban":
         text = "🔨 **Ban User**\n\nUsage: Reply to a user's message in your group with `/ban` to remove them permanently."
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Group Menu", callback_data="menu_group")]])
         await callback_query.edit_message_text(text, reply_markup=btn)
 
     elif data == "help_mute":
-        text = "🔇 **Mute User**\n\nUsage: Reply to a user's message with `/mute` to stop them from sending messages."
+        text = "🔇 **Mute User**\n\nUsage: Reply to a user's message with `/mute`."
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Group Menu", callback_data="menu_group")]])
         await callback_query.edit_message_text(text, reply_markup=btn)
 
     elif data == "help_purge":
-        text = "🗑 **Purge Messages**\n\nUsage: Reply to a message with `/purge` to delete that message and all messages sent after it."
+        text = "🗑 **Purge Messages**\n\nUsage: Reply to a message with `/purge` to delete everything below it."
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Group Menu", callback_data="menu_group")]])
         await callback_query.edit_message_text(text, reply_markup=btn)
 
     elif data == "help_pin":
-        text = "📌 **Pin Message**\n\nUsage: Reply to a message with `/pin` to pin it to the top of the chat."
+        text = "📌 **Pin Message**\n\nUsage: Reply to a message with `/pin`."
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Group Menu", callback_data="menu_group")]])
         await callback_query.edit_message_text(text, reply_markup=btn)
 
     elif data == "help_lock":
-        text = "🔒 **Lock Group**\n\nUsage: Type `/lock` in the group. Normal members won't be able to send messages, only Admins can."
+        text = "🔒 **Lock Group**\n\nUsage: Type `/lock` in the group."
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Group Menu", callback_data="menu_group")]])
         await callback_query.edit_message_text(text, reply_markup=btn)
 
     elif data == "help_unlock":
-        text = "🔓 **Unlock Group**\n\nUsage: Type `/unlock` to allow everyone to send messages again."
+        text = "🔓 **Unlock Group**\n\nUsage: Type `/unlock` in the group."
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Group Menu", callback_data="menu_group")]])
         await callback_query.edit_message_text(text, reply_markup=btn)
 
     elif data == "help_editpost":
-        text = "✏️ **Edit Channel Post**\n\nUsage: Send the command in this bot's PM.\nFormat: `/editpost [Post-Link] [New Text]`\n\nExample:\n`/editpost https://t.me/WETFLAX/123 This is the new text!`"
+        text = "✏️ **Edit Channel Post**\n\nFormat: `/editpost [Post-Link] [New Text]`\n\nExample:\n`/editpost https://t.me/WETFLAX/123 New Text Here!`"
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Channel Menu", callback_data="menu_channel")]])
         await callback_query.edit_message_text(text, reply_markup=btn)
 
     elif data == "help_timer":
-        text = "⏳ **Auto-Delete Timer**\n\nUsage: Reply to any message in your group with `/timer [minutes]`.\n\nExample: `/timer 10` will delete that message automatically after 10 minutes."
+        text = "⏳ **Auto-Delete Timer**\n\nUsage: Reply to a message with `/timer 10` (will delete after 10 mins)."
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Channel Menu", callback_data="menu_channel")]])
         await callback_query.edit_message_text(text, reply_markup=btn)
 
     elif data == "help_info":
-        text = "📊 **Chat Info**\n\nUsage: Type `/info` in your group or channel to get the Chat ID and total member count."
+        text = "📊 **Chat Info**\n\nUsage: Type `/info` in group/channel."
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Channel Menu", callback_data="menu_channel")]])
         await callback_query.edit_message_text(text, reply_markup=btn)
 
-    elif data == "help_settarget":
-        text = "🎯 **Set Target Chat**\n\nUsage: Tell the bot where to send the viral post.\nCommand: `/settarget @your_group_username`"
-        btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Viral Menu", callback_data="menu_viral")]])
+    elif data == "help_broadcast":
+        text = "📡 **Broadcast Message**\n\nUsage: Reply to a photo/video/text and type `/broadcast` followed by Channel Username, ID or Link.\n\nExamples:\n`/broadcast @WETFLAX`\n`/broadcast -100123456789`\n`/broadcast https://t.me/WETFLAX`"
+        btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Broadcast Menu", callback_data="menu_broadcast")]])
         await callback_query.edit_message_text(text, reply_markup=btn)
 
     elif data == "help_setlinks":
-        text = "🔗 **Set Task Links**\n\nUsage: Set the share link and the final VIP join link.\nCommand: `/setlinks [Share-Link] [VIP-Link]`"
-        btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Viral Menu", callback_data="menu_viral")]])
-        await callback_query.edit_message_text(text, reply_markup=btn)
-
-    elif data == "help_makepost":
-        text = "🖼 **Make Viral Poster**\n\nUsage: First, send an image or video to the bot. Then, reply to that image with the command `/makepost`. The bot will automatically add the Share Button and send it to your target group!"
-        btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Viral Menu", callback_data="menu_viral")]])
+        text = "🔗 **Set Task Links**\n\nUsage: `/setlinks [Share-Link] [VIP-Link]`\n(Sets the links for the button that goes with the broadcast)."
+        btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Broadcast Menu", callback_data="menu_broadcast")]])
         await callback_query.edit_message_text(text, reply_markup=btn)
 
     elif data == "close_menu":
         await callback_query.message.delete()
         
-    # ഗ്രൂപ്പിലെ ടാസ്ക് ബട്ടണിൽ ക്ലിക്ക് ചെയ്താൽ വർക്ക് ചെയ്യാനുള്ള കോഡ് വൈറൽ ഫയലിൽ ഉള്ളതുകൊണ്ട് അത് പാസ് ചെയ്യുന്നു
     elif data == "group_share_task":
         pass
