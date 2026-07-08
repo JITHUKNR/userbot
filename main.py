@@ -10,16 +10,36 @@ app = Client(
     bot_token=Config.BOT_TOKEN
 )
 
-# --- ഷെയർ ട്രിക്കിനുള്ള സെറ്റിംഗ്സ് ---
-# യൂസർമാരുടെ ക്ലിക്ക് കൗണ്ട് താൽക്കാലികമായി സേവ് ചെയ്യാൻ
+# --- ഡൈനാമിക് ലിങ്കുകൾ സേവ് ചെയ്യാനുള്ള സെറ്റപ്പ് ---
+bot_settings = {
+    "share_link": "https://t.me/WETFLAX", # ഡിഫോൾട്ട് ലിങ്ക് (ഇത് നിങ്ങൾക്ക് കമാൻഡ് വഴി മാറ്റാം)
+    "join_link": "https://t.me/TRENDA_STORE"     # ഡിഫോൾട്ട് ലിങ്ക് (ഇത് നിങ്ങൾക്ക് കമാൻഡ് വഴി മാറ്റാം)
+}
+# യൂസർമാരുടെ ക്ലിക്ക് കൗണ്ട് സേവ് ചെയ്യാൻ
 user_shares = {}
-# ഇവിടെ നിങ്ങളുടെ ചാനലിന്റെ ലിങ്ക് കൊടുക്കുക (ഇതാണ് ആളുകൾ ഷെയർ ചെയ്യേണ്ടത്)
-SHARE_TEXT = "https://t.me/your_channel_link_here" 
-# 3 തവണ ഷെയർ ചെയ്താൽ അവർക്ക് ജോയിൻ ചെയ്യാൻ കിട്ടേണ്ട പ്രൈവറ്റ് ഗ്രൂപ്പ്/ചാനൽ ലിങ്ക് കൊടുക്കുക
-JOIN_LINK = "https://t.me/+YourPrivateGroupLinkHere" 
 # -----------------------------------
 
-# 1. സ്റ്റാർട്ട് കമാൻഡ്
+# 1. ഷെയർ ചെയ്യേണ്ട ചാനൽ ലിങ്ക് ടെലിഗ്രാമിൽ നിന്ന് സെറ്റ് ചെയ്യാൻ
+@app.on_message(filters.command("setshare") & filters.private)
+async def set_share_link(client, message):
+    if len(message.command) < 2:
+        await message.reply_text("ദയവായി ഷെയർ ചെയ്യേണ്ട ലിങ്ക് കൂടെ നൽകുക.\nഉദാഹരണത്തിന്: `/setshare https://t.me/your_channel`")
+        return
+    
+    bot_settings["share_link"] = message.command[1]
+    await message.reply_text(f"✅ ഷെയർ ചെയ്യേണ്ട ലിങ്ക് വിജയകരമായി മാറ്റി:\n{bot_settings['share_link']}")
+
+# 2. ജോയിൻ ചെയ്യേണ്ട ഗ്രൂപ്പ് ലിങ്ക് സെറ്റ് ചെയ്യാൻ
+@app.on_message(filters.command("setjoin") & filters.private)
+async def set_join_link(client, message):
+    if len(message.command) < 2:
+        await message.reply_text("ദയവായി ജോയിൻ ചെയ്യേണ്ട ലിങ്ക് കൂടെ നൽകുക.\nഉദാഹരണത്തിന്: `/setjoin https://t.me/your_group`")
+        return
+    
+    bot_settings["join_link"] = message.command[1]
+    await message.reply_text(f"✅ ജോയിൻ ചെയ്യേണ്ട ലിങ്ക് വിജയകരമായി മാറ്റി:\n{bot_settings['join_link']}")
+
+# 3. സ്റ്റാർട്ട് കമാൻഡ്
 @app.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
     buttons = InlineKeyboardMarkup([
@@ -32,55 +52,52 @@ async def start_command(client, message):
         reply_markup=buttons
     )
 
-# 2. ഷെയർ ടാസ്ക് തുടങ്ങാനുള്ള കമാൻഡ് (/task)
+# 4. ഷെയർ ടാസ്ക് തുടങ്ങാനുള്ള കമാൻഡ് (/task)
 @app.on_message(filters.command("task") & filters.private)
 async def share_task(client, message):
     user_id = message.from_user.id
-    user_shares[user_id] = 0 # കൗണ്ട് 0 ആക്കി വെക്കുന്നു
+    user_shares[user_id] = 0 
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Share 0/3 ↪️", callback_data="do_share")]
     ])
     
     await message.reply_text(
-        "നിങ്ങൾ ഈ ഗ്രൂപ്പിൽ ജോയിൻ ചെയ്യാൻ താഴെയുള്ള ബട്ടണിൽ ക്ലിക്ക് ചെയ്ത് **3 ഗ്രൂപ്പുകളിലേക്ക്** ഞങ്ങളുടെ ചാനൽ ഷെയർ ചെയ്യണം.",
+        "നിങ്ങൾ ഈ ഗ്രൂപ്പിൽ ജോയിൻ ചെയ്യാൻ താഴെയുള്ള ബട്ടണിൽ ക്ലിക്ക് ചെയ്ത് **3 ഗ്രൂപ്പുകളിലേക്ക്** ഞങ്ങളുടെ ലിങ്ക് ഷെയർ ചെയ്യണം.",
         reply_markup=keyboard
     )
 
-# 3. ഷെയർ ബട്ടണിൽ ക്ലിക്ക് ചെയ്യുമ്പോൾ സംഭവിക്കേണ്ട കാര്യങ്ങൾ
+# 5. ഷെയർ ബട്ടണിൽ ക്ലിക്ക് ചെയ്യുമ്പോൾ സംഭവിക്കേണ്ട കാര്യങ്ങൾ
 @app.on_callback_query(filters.regex("do_share"))
 async def share_button_click(client, callback_query):
     user_id = callback_query.from_user.id
     current_count = user_shares.get(user_id, 0)
     
     if current_count < 3:
-        # കൗണ്ട് 1 കൂട്ടുന്നു
         current_count += 1
         user_shares[user_id] = current_count
         
-        # അടുത്ത ബട്ടൺ സെറ്റ് ചെയ്യുന്നു (ഉദാ: Share 1/3)
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(f"Share {current_count}/3 ↪️", callback_data="do_share")]
         ])
         
-        # മെസ്സേജ് അപ്ഡേറ്റ് ചെയ്യുന്നു
         await callback_query.edit_message_reply_markup(reply_markup=keyboard)
         
-        # ഷെയർ ചെയ്യാനുള്ള വിൻഡോ ഓപ്പൺ ആക്കി കൊടുക്കുന്നു
-        share_url = f"https://t.me/share/url?url={SHARE_TEXT}"
+        current_share_link = bot_settings["share_link"]
+        share_url = f"https://t.me/share/url?url={current_share_link}"
         await callback_query.answer("ലിങ്ക് ഷെയർ ചെയ്യുക!", url=share_url)
         
-        # 3 തവണ തികഞ്ഞാൽ
         if current_count == 3:
+            current_join_link = bot_settings["join_link"]
             success_keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("ഗ്രൂപ്പിൽ ജോയിൻ ചെയ്യുക ✅", url=JOIN_LINK)]
+                [InlineKeyboardButton("ഗ്രൂപ്പിൽ ജോയിൻ ചെയ്യുക ✅", url=current_join_link)]
             ])
             await callback_query.edit_message_text(
                 "✅ അഭിനന്ദനങ്ങൾ! നിങ്ങൾ 3 ഗ്രൂപ്പുകളിൽ ഷെയർ ചെയ്തു കഴിഞ്ഞു. താഴെയുള്ള ബട്ടൺ വഴി നിങ്ങൾക്ക് ഗ്രൂപ്പിൽ ജോയിൻ ചെയ്യാം.",
                 reply_markup=success_keyboard
             )
 
-# 4. പുതിയതായി വരുന്ന റിക്വസ്റ്റുകൾ തനിയെ അക്സെപ്റ്റ് ചെയ്യാൻ (Auto-Approve)
+# 6. പുതിയതായി വരുന്ന റിക്വസ്റ്റുകൾ തനിയെ അക്സെപ്റ്റ് ചെയ്യാൻ (Auto-Approve)
 @app.on_chat_join_request()
 async def auto_approve(client, message):
     try:
@@ -90,7 +107,7 @@ async def auto_approve(client, message):
     except Exception as e:
         print(f"Error auto-approving: {e}")
 
-# 5. ഓട്ടോ-റിപ്ലൈ ഫിൽറ്ററുകൾ (ഗ്രൂപ്പുകളിൽ മാത്രം വർക്ക് ചെയ്യാൻ)
+# 7. ഓട്ടോ-റിപ്ലൈ ഫിൽറ്ററുകൾ (ഗ്രൂപ്പുകളിൽ മാത്രം വർക്ക് ചെയ്യാൻ)
 @app.on_message(filters.text & filters.group)
 async def auto_filters(client, message):
     text = message.text.lower()
@@ -105,7 +122,7 @@ async def auto_filters(client, message):
         rules_text = "നമ്മുടെ ഗ്രൂപ്പിലെ നിയമങ്ങൾ:\n1. സ്പാം മെസ്സേജുകൾ അയക്കരുത്.\n2. പരസ്പരം ബഹുമാനിക്കുക."
         await message.reply_text(rules_text)
 
-# 6. അഡ്മിൻ പിൻ കമാൻഡ് (Pin)
+# 8. അഡ്മിൻ പിൻ കമാൻഡ് (Pin)
 @app.on_message(filters.command("pin") & filters.reply)
 async def pin_message(client, message):
     try:
