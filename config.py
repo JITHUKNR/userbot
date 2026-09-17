@@ -1,3 +1,4 @@
+class Config:
     API_ID = 34818480
     API_HASH = "a82911ecbf23a7ead187d410a34cf47a"
     BOT_TOKEN = "8838643631:AAEldj1tMFZQNZQ4fWHdd4mcx-w_QLEZkB4"
