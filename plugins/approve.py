@@ -1,10 +1,22 @@
 from pyrogram import Client, filters
+from pyrogram.enums import ChatMemberStatus
+
+# അഡ്മിൻ ആണോ എന്ന് ചെക്ക് ചെയ്യാനുള്ള കസ്റ്റം ഫിൽറ്റർ
+async def check_admin(_, client, message):
+    if not message.from_user: return False
+    try:
+        user = await client.get_chat_member(message.chat.id, message.from_user.id)
+        return user.status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]
+    except:
+        return False
+
+is_admin = filters.create(check_admin)
 
 # ഓട്ടോ-അപ്രൂവ് സ്റ്റാറ്റസ് സേവ് ചെയ്യാൻ
 auto_approve_state = {}
 
 # 1. ഇതുവരെ വന്ന എല്ലാ റിക്വസ്റ്റുകളും ഒറ്റയടിക്ക് അപ്രൂവ് ചെയ്യാൻ
-@Client.on_message(filters.command("approveall") & filters.admin)
+@Client.on_message(filters.command("approveall") & is_admin)
 async def approve_all_requests(client, message):
     m = await message.reply_text("⏳ അപ്രൂവ് ചെയ്യാൻ തുടങ്ങുന്നു... ദയവായി കാത്തിരിക്കുക.")
     try:
@@ -14,7 +26,7 @@ async def approve_all_requests(client, message):
         await m.edit(f"❌ ഒരു എറർ സംഭവിച്ചു. ബോട്ടിന് അഡ്മിൻ പവർ ഉണ്ടോ എന്ന് പരിശോധിക്കുക.\nError: {e}")
 
 # 2. ഓട്ടോ അപ്രൂവ് ON/OFF ചെയ്യാൻ
-@Client.on_message(filters.command("autoapprove") & filters.admin)
+@Client.on_message(filters.command("autoapprove") & is_admin)
 async def toggle_auto_approve(client, message):
     chat_id = message.chat.id
     if len(message.command) > 1:
