@@ -268,7 +268,10 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
                 except Exception:
                     pass
         except Exception as e:
-            await callback_query.answer(f"Error: {e}", show_alert=True)
+            if "USER_ALREADY_PARTICIPANT" in str(e):
+                await callback_query.edit_message_text("✅ **You are already a participant of this channel!**")
+            else:
+                await callback_query.answer(f"Error: {e}", show_alert=True)
         return
 
     if data == "menu_main":
