@@ -38,20 +38,27 @@ async def get_channel_panel(chat_id: int):
         return None, None
     
     title = ch.get("title", "Channel")
-    auto_status = "Enabled" if ch.get("auto_approve", False) else "Disabled"
-    
+    app_accept = "Enabled" if ch.get("app_accept", True) else "Disabled"
+    auto_approve = "Enabled" if ch.get("auto_approve", False) else "Disabled"
+    captcha = "Enabled" if ch.get("captcha", False) else "Disabled"
+    lang_filter = "Enabled" if ch.get("lang_filter", False) else "Disabled"
+    accept_interact = "Enabled" if ch.get("accept_interact", False) else "Disabled"
+
     text = (
-        f"📢 **{title}**\n\n"
-        f"Application accept: **Enabled**\n"
-        f"Auto-approve: **{auto_status}**\n\n"
-        f"Select an option below to manage this channel:"
+        f"📢 **{title}**\n"
+        f"Application accept: {app_accept}\n"
+        f"Auto-approve: {auto_approve}\n"
+        f"Use CAPTCHA: {captcha}\n"
+        f"Language filter: {lang_filter}\n"
+        f"Accept on interact: {accept_interact}"
     )
-    
-    toggle_text = "🔴 Disable Auto-Approve" if ch.get("auto_approve", False) else "🟢 Enable Auto-Approve"
-    
+
     buttons = [
-        [InlineKeyboardButton(toggle_text, callback_data=f"toggle_auto_{chat_id}")],
-        [InlineKeyboardButton("👥 Approve all requests", callback_data=f"bulk_approve_{chat_id}")],
+        [InlineKeyboardButton("🫂 Applications accept", callback_data=f"toggle_app_{chat_id}")],
+        [InlineKeyboardButton("✏️ Set greetings", callback_data=f"set_greet_{chat_id}")],
+        [InlineKeyboardButton("✏️ Set farewells", callback_data=f"set_farewell_{chat_id}")],
+        [InlineKeyboardButton("🫂 Approve requests", callback_data=f"view_requests_{chat_id}")],
+        [InlineKeyboardButton("⚙️ Copy settings to other channels", callback_data=f"copy_settings_{chat_id}")],
         [InlineKeyboardButton("🗑 Remove channel", callback_data=f"remove_ch_{chat_id}")],
         [InlineKeyboardButton("🔙 Back", callback_data="menu_channel")]
     ]
@@ -78,7 +85,6 @@ async def start_menu(client: Client, message: Message):
     )
     await message.reply_text(text, reply_markup=get_main_menu())
 
-# Forward any message from channel to save it
 @Client.on_message(filters.forwarded & filters.private)
 async def handle_forwarded_channel(client: Client, message: Message):
     if message.forward_from_chat and message.forward_from_chat.type.name in ["CHANNEL", "SUPERGROUP"]:
@@ -87,7 +93,15 @@ async def handle_forwarded_channel(client: Client, message: Message):
         
         await db.channels.update_one(
             {"chat_id": chat_id},
-            {"$set": {"chat_id": chat_id, "title": title, "auto_approve": False}},
+            {"$set": {
+                "chat_id": chat_id,
+                "title": title,
+                "app_accept": True,
+                "auto_approve": False,
+                "captcha": False,
+                "lang_filter": False,
+                "accept_interact": False
+            }},
             upsert=True
         )
         
@@ -119,7 +133,7 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
     elif data == "add_channel":
         text = (
             "**To connect a new channel:**\n\n"
-            "1. Add this bot as an **Administrator** in your channel (with invite user permissions).\n"
+            "1. Add this bot as an **Administrator** in your channel (with invite users permission).\n"
             "2. **Forward any message** from that channel directly to this chat.\n\n"
             "The channel will be automatically detected and registered."
         )
@@ -136,23 +150,46 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         else:
             await callback_query.answer("Channel not found in database.", show_alert=True)
 
-    elif data.startswith("toggle_auto_"):
+    elif data.startswith("toggle_app_"):
         chat_id = int(data.split("_")[2])
         ch = await db.channels.find_one({"chat_id": chat_id})
         if ch:
-            new_state = not ch.get("auto_approve", False)
-            await db.channels.update_one({"chat_id": chat_id}, {"$set": {"auto_approve": new_state}})
+            new_state = not ch.get("app_accept", True)
+            await db.channels.update_one({"chat_id": chat_id}, {"$set": {"app_accept": new_state}})
             text, markup = await get_channel_panel(chat_id)
             await callback_query.edit_message_text(text, reply_markup=markup)
 
+    elif data.startswith("view_requests_"):
+        chat_id = int(data.split("_")[2])
+        text = (
+            "Please submit the number of applications you wish to accept, or "
+            "use the button below to accept all applications."
+        )
+        buttons = [
+            [InlineKeyboardButton("Accept all", callback_data=f"bulk_approve_{chat_id}")],
+            [InlineKeyboardButton("🔙 Back", callback_data=f"manage_{chat_id}")]
+        ]
+        await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+
     elif data.startswith("bulk_approve_"):
         chat_id = int(data.split("_")[2])
-        await callback_query.answer("Approving all requests... Please wait.", show_alert=False)
+        await callback_query.answer("Processing requests...", show_alert=False)
         try:
             await client.approve_all_chat_join_requests(chat_id)
-            await callback_query.answer("✅ All join requests approved successfully!", show_alert=True)
+            await callback_query.answer("✅ All join requests accepted successfully!", show_alert=True)
+            text, markup = await get_channel_panel(chat_id)
+            await callback_query.edit_message_text(text, reply_markup=markup)
         except Exception as e:
             await callback_query.answer(f"❌ Error: {e}", show_alert=True)
+
+    elif data.startswith("set_greet_"):
+        await callback_query.answer("Send the welcome message you want to set for this channel.", show_alert=True)
+
+    elif data.startswith("set_farewell_"):
+        await callback_query.answer("Send the farewell message you want to set for this channel.", show_alert=True)
+
+    elif data.startswith("copy_settings_"):
+        await callback_query.answer("Copy settings feature will be applied to your other channels.", show_alert=True)
 
     elif data.startswith("remove_ch_"):
         chat_id = int(data.split("_")[2])
@@ -196,7 +233,7 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         await callback_query.edit_message_text(f"Command Info for: {data.replace('help_', '/')}\nRun this command in the group.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_group")]]))
         
     elif data in ["help_editpost", "help_timer", "help_info"]:
-        await callback_query.edit_message_text(f"Channel Tools info. Check Dashboard for details.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_channel")]]))
+        await callback_query.edit_message_text("Channel Tools info. Check Dashboard for details.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_channel")]]))
 
     elif data == "close_menu":
         await callback_query.message.delete()
