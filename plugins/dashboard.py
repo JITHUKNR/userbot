@@ -42,11 +42,9 @@ async def get_channel_panel(client: Client, chat_id: int):
     
     title = ch.get("title", "Channel")
     
-    # പെൻഡിങ് റിക്വസ്റ്റുകളുടെ എണ്ണം തത്സമയം കണക്കാക്കുന്നു
-    pending_count = 0
+    # പെൻഡിങ് റിക്വസ്റ്റുകളുടെ എണ്ണം ഡാറ്റാബേസിൽ നിന്ന് എടുക്കുന്നു
     try:
-        async for _ in client.get_chat_join_requests(chat_id):
-            pending_count += 1
+        pending_count = await db.channels.database["pending_requests"].count_documents({"chat_id": chat_id})
     except Exception:
         pending_count = 0
 
@@ -223,6 +221,13 @@ async def handle_incoming_join_request(client: Client, request):
     if not ch or not ch.get("app_accept", True):
         return
 
+    # വരുന്ന റിക്വസ്റ്റ് പെൻഡിങ് ലിസ്റ്റിൽ സേവ് ചെയ്യുന്നു
+    await db.channels.database["pending_requests"].update_one(
+        {"chat_id": chat_id, "user_id": user_id},
+        {"$set": {"chat_id": chat_id, "user_id": user_id}},
+        upsert=True
+    )
+
     if ch.get("captcha", False):
         captcha_text = ch.get("captcha_text", f"Are you interested in joining **{ch.get('title')}**? Please verify below.")
         button_name = ch.get("captcha_button", "✅ Yes, I want to join")
@@ -234,6 +239,7 @@ async def handle_incoming_join_request(client: Client, request):
     elif ch.get("auto_approve", False):
         try:
             await client.approve_chat_join_request(chat_id, user_id)
+            await db.channels.database["pending_requests"].delete_one({"chat_id": chat_id, "user_id": user_id})
             if ch.get("greetings_enabled", False):
                 greet_text = ch.get("greetings_text", f"Welcome to **{ch.get('title')}**! 🎉")
                 try:
@@ -260,6 +266,9 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         try:
             await client.approve_chat_join_request(chat_id, user_id)
             
+            # പെൻഡിങ് ലിസ്റ്റിൽ നിന്ന് നീക്കം ചെയ്യുന്നു
+            await db.channels.database["pending_requests"].delete_one({"chat_id": chat_id, "user_id": user_id})
+            
             # ബ്രോഡ്കാസ്റ്റിനായി യൂസറുടെ ഐഡി ഡാറ്റാബേസിൽ സേവ് ചെയ്യുന്നു
             await db.channels.database["users"].update_one({"user_id": user_id}, {"$set": {"user_id": user_id}}, upsert=True)
             
@@ -279,12 +288,14 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         except Exception as e:
             err_str = str(e)
             if "USER_ALREADY_PARTICIPANT" in err_str or "HIDE_REQUESTER_MISSING" in err_str:
+                await db.channels.database["pending_requests"].delete_one({"chat_id": chat_id, "user_id": user_id})
                 msg = await callback_query.edit_message_text("✅ **Verification successful! You have been accepted to the channel.**")
                 await db.channels.database["users"].update_one({"user_id": user_id}, {"$set": {"user_id": user_id}}, upsert=True)
                 asyncio.create_task(delete_message_safely(msg))
             else:
                 await callback_query.answer(f"Error: {e}", show_alert=True)
         return
+
 
     if data == "menu_main":
         await callback_query.edit_message_text(
@@ -420,11 +431,13 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         chat_id = int(data.split("bulk_approve_")[1])
         await callback_query.answer("Processing requests...", show_alert=False)
         try:
-            async for req in client.get_chat_join_requests(chat_id):
+            async for req in db.channels.database["pending_requests"].find({"chat_id": chat_id}):
                 try:
-                    await client.approve_chat_join_request(chat_id, req.from_user.id)
+                    await client.approve_chat_join_request(chat_id, req["user_id"])
+                    await asyncio.sleep(0.05)
                 except Exception:
                     pass
+            await db.channels.database["pending_requests"].delete_many({"chat_id": chat_id})
             await callback_query.answer("✅ All join requests accepted successfully!", show_alert=True)
             text, markup = await get_channel_panel(client, chat_id)
             await callback_query.edit_message_text(text, reply_markup=markup)
