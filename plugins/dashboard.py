@@ -1,3 +1,4 @@
+import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
 from database import db
@@ -34,12 +35,21 @@ async def get_channel_list_menu():
     buttons.append([InlineKeyboardButton("🔙 Back", callback_data="menu_main")])
     return InlineKeyboardMarkup(buttons)
 
-async def get_channel_panel(chat_id: int):
+async def get_channel_panel(client: Client, chat_id: int):
     ch = await db.channels.find_one({"chat_id": chat_id})
     if not ch:
         return None, None
     
     title = ch.get("title", "Channel")
+    
+    # പെൻഡിങ് റിക്വസ്റ്റുകളുടെ എണ്ണം തത്സമയം കണക്കാക്കുന്നു
+    pending_count = 0
+    try:
+        async for _ in client.get_chat_join_requests(chat_id):
+            pending_count += 1
+    except Exception:
+        pending_count = 0
+
     app_accept = "Enabled" if ch.get("app_accept", True) else "Disabled"
     auto_approve = "Enabled" if ch.get("auto_approve", False) else "Disabled"
     captcha = "Enabled" if ch.get("captcha", False) else "Disabled"
@@ -52,14 +62,15 @@ async def get_channel_panel(chat_id: int):
         f"Auto-approve: {auto_approve}\n"
         f"Use CAPTCHA: {captcha}\n"
         f"Language filter: {lang_filter}\n"
-        f"Accept on interact: {accept_interact}"
+        f"Accept on interact: {accept_interact}\n\n"
+        f"⏳ **Pending Requests:** `{pending_count}`"
     )
 
     buttons = [
         [InlineKeyboardButton("🫂 Applications accept", callback_data=f"sub_app_{chat_id}")],
         [InlineKeyboardButton("✏️ Set greetings", callback_data=f"sub_greet_{chat_id}")],
         [InlineKeyboardButton("✏️ Set farewells", callback_data=f"sub_farewell_{chat_id}")],
-        [InlineKeyboardButton("🫂 Approve requests", callback_data=f"view_requests_{chat_id}")],
+        [InlineKeyboardButton(f"🫂 Approve requests ({pending_count})", callback_data=f"view_requests_{chat_id}")],
         [InlineKeyboardButton("⚙️ Copy settings to other channels", callback_data=f"copy_settings_{chat_id}")],
         [InlineKeyboardButton("🗑 Remove channel", callback_data=f"remove_ch_{chat_id}")],
         [InlineKeyboardButton("🔙 Back", callback_data="menu_channel")]
@@ -240,7 +251,7 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
     if user_id in USER_STATE and data.startswith("cancel_state_"):
         del USER_STATE[user_id]
         chat_id = int(data.split("cancel_state_")[1])
-        text, markup = await get_channel_panel(chat_id)
+        text, markup = await get_channel_panel(client, chat_id)
         await callback_query.edit_message_text(text, reply_markup=markup)
         return
 
@@ -289,7 +300,7 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
 
     elif data.startswith("manage_"):
         chat_id = int(data.split("manage_")[1])
-        text, markup = await get_channel_panel(chat_id)
+        text, markup = await get_channel_panel(client, chat_id)
         if text and markup:
             await callback_query.edit_message_text(text, reply_markup=markup)
         else:
@@ -394,9 +405,13 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         chat_id = int(data.split("bulk_approve_")[1])
         await callback_query.answer("Processing requests...", show_alert=False)
         try:
-            await client.approve_all_chat_join_requests(chat_id)
+            async for req in client.get_chat_join_requests(chat_id):
+                try:
+                    await client.approve_chat_join_request(chat_id, req.from_user.id)
+                except Exception:
+                    pass
             await callback_query.answer("✅ All join requests accepted successfully!", show_alert=True)
-            text, markup = await get_channel_panel(chat_id)
+            text, markup = await get_channel_panel(client, chat_id)
             await callback_query.edit_message_text(text, reply_markup=markup)
         except Exception as e:
             await callback_query.answer(f"❌ Error: {e}", show_alert=True)
