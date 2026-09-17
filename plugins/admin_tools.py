@@ -87,13 +87,3 @@ async def auto_delete_timer(client: Client, message: Message):
         await confirm_msg.delete()
     except Exception:
         pass
-
-# 3. AUTO APPROVE JOIN REQUESTS
-@Client.on_chat_join_request()
-async def auto_approve_req(client: Client, message):
-    try:
-        await client.approve_chat_join_request(message.chat.id, message.from_user.id)
-        welcome_text = f"Hello {message.from_user.first_name}, Welcome to {message.chat.title}! 🥳"
-        await client.send_message(message.from_user.id, welcome_text)
-    except Exception:
-        pass
