@@ -1,5 +1,6 @@
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
+from database import db
 
 def get_main_menu():
     return InlineKeyboardMarkup([
@@ -21,13 +22,40 @@ def get_group_menu():
         [InlineKeyboardButton("🔙 Back", callback_data="menu_main")]
     ])
 
-def get_channel_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✏️ Edit Post", callback_data="help_editpost"),
-         InlineKeyboardButton("⏳ Auto-Delete Timer", callback_data="help_timer")],
-        [InlineKeyboardButton("📊 Chat Info", callback_data="help_info")],
-        [InlineKeyboardButton("🔙 Back", callback_data="menu_main")]
-    ])
+async def get_channel_list_menu():
+    channels = await db.channels.find().to_list(length=100)
+    buttons = [[InlineKeyboardButton("➕ Add channel", callback_data="add_channel")]]
+    for ch in channels:
+        title = ch.get("title", "Channel")
+        chat_id = ch.get("chat_id")
+        buttons.append([InlineKeyboardButton(f"📢 {title}", callback_data=f"manage_{chat_id}")])
+    buttons.append([InlineKeyboardButton("🔙 Back", callback_data="menu_main")])
+    return InlineKeyboardMarkup(buttons)
+
+async def get_channel_panel(chat_id: int):
+    ch = await db.channels.find_one({"chat_id": chat_id})
+    if not ch:
+        return None, None
+    
+    title = ch.get("title", "Channel")
+    auto_status = "Enabled" if ch.get("auto_approve", False) else "Disabled"
+    
+    text = (
+        f"📢 **{title}**\n\n"
+        f"Application accept: **Enabled**\n"
+        f"Auto-approve: **{auto_status}**\n\n"
+        f"Select an option below to manage this channel:"
+    )
+    
+    toggle_text = "🔴 Disable Auto-Approve" if ch.get("auto_approve", False) else "🟢 Enable Auto-Approve"
+    
+    buttons = [
+        [InlineKeyboardButton(toggle_text, callback_data=f"toggle_auto_{chat_id}")],
+        [InlineKeyboardButton("👥 Approve all requests", callback_data=f"bulk_approve_{chat_id}")],
+        [InlineKeyboardButton("🗑 Remove channel", callback_data=f"remove_ch_{chat_id}")],
+        [InlineKeyboardButton("🔙 Back", callback_data="menu_channel")]
+    ]
+    return text, InlineKeyboardMarkup(buttons)
 
 def get_broadcast_menu():
     return InlineKeyboardMarkup([
@@ -50,16 +78,89 @@ async def start_menu(client: Client, message: Message):
     )
     await message.reply_text(text, reply_markup=get_main_menu())
 
+# Forward any message from channel to save it
+@Client.on_message(filters.forwarded & filters.private)
+async def handle_forwarded_channel(client: Client, message: Message):
+    if message.forward_from_chat and message.forward_from_chat.type.name in ["CHANNEL", "SUPERGROUP"]:
+        chat_id = message.forward_from_chat.id
+        title = message.forward_from_chat.title
+        
+        await db.channels.update_one(
+            {"chat_id": chat_id},
+            {"$set": {"chat_id": chat_id, "title": title, "auto_approve": False}},
+            upsert=True
+        )
+        
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("📢 Channel Control", callback_data="menu_channel")]])
+        await message.reply_text(
+            f"✅ **Channel successfully connected!**\n\n**Title:** {title}\n**ID:** `{chat_id}`",
+            reply_markup=markup
+        )
+
 @Client.on_callback_query()
 async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
     data = callback_query.data
     
     if data == "menu_main":
-        await callback_query.edit_message_text("👑 **ULTIMATE ADMIN CONTROL PANEL**\n\nSelect a category below:", reply_markup=get_main_menu())
+        await callback_query.edit_message_text(
+            "👑 **ULTIMATE ADMIN CONTROL PANEL**\n\nSelect a category below:",
+            reply_markup=get_main_menu()
+        )
     elif data == "menu_group":
         await callback_query.edit_message_text("🛡 **Group Management**\n\nClick a tool below:", reply_markup=get_group_menu())
+    
     elif data == "menu_channel":
-        await callback_query.edit_message_text("📢 **Channel Control**\n\nClick a tool below:", reply_markup=get_channel_menu())
+        markup = await get_channel_list_menu()
+        await callback_query.edit_message_text(
+            "**Welcome!**\n\n**Your channels:**",
+            reply_markup=markup
+        )
+
+    elif data == "add_channel":
+        text = (
+            "**To connect a new channel:**\n\n"
+            "1. Add this bot as an **Administrator** in your channel (with invite user permissions).\n"
+            "2. **Forward any message** from that channel directly to this chat.\n\n"
+            "The channel will be automatically detected and registered."
+        )
+        await callback_query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="menu_channel")]])
+        )
+
+    elif data.startswith("manage_"):
+        chat_id = int(data.split("_")[1])
+        text, markup = await get_channel_panel(chat_id)
+        if text and markup:
+            await callback_query.edit_message_text(text, reply_markup=markup)
+        else:
+            await callback_query.answer("Channel not found in database.", show_alert=True)
+
+    elif data.startswith("toggle_auto_"):
+        chat_id = int(data.split("_")[2])
+        ch = await db.channels.find_one({"chat_id": chat_id})
+        if ch:
+            new_state = not ch.get("auto_approve", False)
+            await db.channels.update_one({"chat_id": chat_id}, {"$set": {"auto_approve": new_state}})
+            text, markup = await get_channel_panel(chat_id)
+            await callback_query.edit_message_text(text, reply_markup=markup)
+
+    elif data.startswith("bulk_approve_"):
+        chat_id = int(data.split("_")[2])
+        await callback_query.answer("Approving all requests... Please wait.", show_alert=False)
+        try:
+            await client.approve_all_chat_join_requests(chat_id)
+            await callback_query.answer("✅ All join requests approved successfully!", show_alert=True)
+        except Exception as e:
+            await callback_query.answer(f"❌ Error: {e}", show_alert=True)
+
+    elif data.startswith("remove_ch_"):
+        chat_id = int(data.split("_")[2])
+        await db.channels.delete_one({"chat_id": chat_id})
+        await callback_query.answer("Channel removed from bot.", show_alert=True)
+        markup = await get_channel_list_menu()
+        await callback_query.edit_message_text("**Welcome!**\n\n**Your channels:**", reply_markup=markup)
+
     elif data == "menu_broadcast":
         await callback_query.edit_message_text("📡 **Broadcast System**\n\nLearn how to add custom buttons:", reply_markup=get_broadcast_menu())
     elif data == "menu_viral":
