@@ -259,7 +259,12 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         chat_id = int(data.split("verify_join_")[1])
         try:
             await client.approve_chat_join_request(chat_id, user_id)
-            await callback_query.edit_message_text("✅ **Verification successful! You have been accepted to the channel.**")
+            
+            # ബ്രോഡ്കാസ്റ്റിനായി യൂസറുടെ ഐഡി ഡാറ്റാബേസിൽ സേവ് ചെയ്യുന്നു
+            await db.users.update_one({"user_id": user_id}, {"$set": {"user_id": user_id}}, upsert=True)
+            
+            msg = await callback_query.edit_message_text("✅ **Verification successful! You have been accepted to the channel.**")
+            
             ch = await db.channels.find_one({"chat_id": chat_id})
             if ch and ch.get("greetings_enabled", False):
                 greet_text = ch.get("greetings_text", f"Welcome to **{ch.get('title')}**! 🎉")
@@ -267,9 +272,16 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
                     await client.send_message(user_id, greet_text)
                 except Exception:
                     pass
+            
+            # 10 സെക്കൻഡിനു ശേഷം വെരിഫിക്കേഷൻ മെസ്സേജ് തനിയെ ഡിലീറ്റ് ആകുന്നു
+            asyncio.create_task(delete_message_safely(msg))
+            
         except Exception as e:
-            if "USER_ALREADY_PARTICIPANT" in str(e):
-                await callback_query.edit_message_text("✅ **You are already a participant of this channel!**")
+            err_str = str(e)
+            if "USER_ALREADY_PARTICIPANT" in err_str or "HIDE_REQUESTER_MISSING" in err_str:
+                msg = await callback_query.edit_message_text("✅ **Verification successful! You have been accepted to the channel.**")
+                await db.users.update_one({"user_id": user_id}, {"$set": {"user_id": user_id}}, upsert=True)
+                asyncio.create_task(delete_message_safely(msg))
             else:
                 await callback_query.answer(f"Error: {e}", show_alert=True)
         return
@@ -470,3 +482,11 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         await callback_query.message.delete()
     elif data == "group_share_task":
         pass
+        
+async def delete_message_safely(msg):
+    await asyncio.sleep(10)
+    try:
+        await msg.delete()
+    except Exception:
+        pass
+                
