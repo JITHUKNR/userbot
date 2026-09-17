@@ -261,7 +261,7 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
             await client.approve_chat_join_request(chat_id, user_id)
             
             # ബ്രോഡ്കാസ്റ്റിനായി യൂസറുടെ ഐഡി ഡാറ്റാബേസിൽ സേവ് ചെയ്യുന്നു
-            await db.users.update_one({"user_id": user_id}, {"$set": {"user_id": user_id}}, upsert=True)
+            await db.channels.database["users"].update_one({"user_id": user_id}, {"$set": {"user_id": user_id}}, upsert=True)
             
             msg = await callback_query.edit_message_text("✅ **Verification successful! You have been accepted to the channel.**")
             
@@ -280,7 +280,7 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
             err_str = str(e)
             if "USER_ALREADY_PARTICIPANT" in err_str or "HIDE_REQUESTER_MISSING" in err_str:
                 msg = await callback_query.edit_message_text("✅ **Verification successful! You have been accepted to the channel.**")
-                await db.users.update_one({"user_id": user_id}, {"$set": {"user_id": user_id}}, upsert=True)
+                await db.channels.database["users"].update_one({"user_id": user_id}, {"$set": {"user_id": user_id}}, upsert=True)
                 asyncio.create_task(delete_message_safely(msg))
             else:
                 await callback_query.answer(f"Error: {e}", show_alert=True)
