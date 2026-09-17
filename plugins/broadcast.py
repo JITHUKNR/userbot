@@ -65,7 +65,7 @@ async def custom_button_broadcast(client: Client, message: Message):
     sent_messages = []
     success = 0
     
-    async for user in db.users.find():
+    async for user in db.channels.database["users"].find():
         try:
             sent_msg = await client.copy_message(
                 chat_id=user["user_id"], 
@@ -81,11 +81,11 @@ async def custom_button_broadcast(client: Client, message: Message):
 
     # ഡിലീറ്റ് ചെയ്യാൻ വേണ്ടി മെസ്സേജ് ഐഡികൾ ഡാറ്റാബേസിൽ സേവ് ചെയ്യുന്നു
     if sent_messages:
-        await db.broadcast_logs.update_one(
-            {"_id": "latest_broadcast"},
-            {"$set": {"messages": sent_messages}},
-            upsert=True
-        )
+        await db.channels.database["broadcast_logs"].update_one(
+    {"_id": "latest_broadcast"},
+    {"$set": {"messages": sent_messages}},
+    upsert=True
+)
 
     await status_msg.edit_text(f"✅ **Broadcast Completed!**\nSent to `{success}` users.\n\n*(You can delete this broadcast anytime using `/delete_broadcast`)*")
 
@@ -93,7 +93,7 @@ async def custom_button_broadcast(client: Client, message: Message):
 # 2. ബ്രോഡ്കാസ്റ്റ് ചെയ്ത എല്ലാ മെസ്സേജുകളും ഡിലീറ്റ് ചെയ്യാനുള്ള കമാൻഡ്
 @Client.on_message(filters.command("delete_broadcast") & filters.private)
 async def delete_all_broadcast(client: Client, message: Message):
-    log = await db.broadcast_logs.find_one({"_id": "latest_broadcast"})
+    log = await db.channels.database["broadcast_logs"].find_one({"_id": "latest_broadcast"})
     if not log or not log.get("messages"):
         return await message.reply_text("❌ No recent broadcast found to delete!")
     
@@ -109,7 +109,7 @@ async def delete_all_broadcast(client: Client, message: Message):
             pass
             
     # ഡിലീറ്റ് ചെയ്തു കഴിഞ്ഞാൽ ഡാറ്റാബേസ് ക്ലിയർ ചെയ്യാം
-    await db.broadcast_logs.delete_one({"_id": "latest_broadcast"})
+    await db.channels.database["broadcast_logs"].delete_one({"_id": "latest_broadcast"})
     
     await status_msg.edit_text(f"✅ **Broadcast successfully deleted!**\nRemoved from `{deleted_count}` chats.")
 
