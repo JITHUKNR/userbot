@@ -159,4 +159,4 @@ async def handle_group_task(client: Client, callback_query: CallbackQuery):
         await callback_query.answer("🎉 Congratulations! Redirecting to VIP...", url=vip_url)
     else:
         await callback_query.answer("You have already completed the task! Redirecting to VIP...", url=vip_url)
-     else:
+    else:
