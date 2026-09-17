@@ -1,5 +1,7 @@
+import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
+from database import db
 
 task_settings = {
     "share_link": "https://t.me/WETFLAX", 
@@ -16,13 +18,13 @@ async def set_task_links(client: Client, message: Message):
     await message.reply_text(f"✅ Links updated!\n**Share:** {task_settings['share_link']}\n**VIP:** {task_settings['vip_link']}")
 
 
-# 1. കസ്റ്റം ബട്ടണുകൾ വച്ചുള്ള ബ്രോഡ്കാസ്റ്റ്
+# 1. കസ്റ്റം ബട്ടണുകൾ വച്ചുള്ള ബ്രോഡ്കാസ്റ്റ് (ഡിലീറ്റ് ചെയ്യാവുന്ന ഫീച്ചറോട് കൂടി)
 @Client.on_message(filters.command("broadcast") & filters.private)
 async def custom_button_broadcast(client: Client, message: Message):
     if not message.reply_to_message:
         return await message.reply_text("Please reply to a photo/video/text to broadcast it.")
 
-    # മെസ്സേജിലെ വരികൾ വേർതിരിക്കുന്നു (മുഴുവൻ പാരാഗ്രാഫും വായിക്കുന്നു)
+    # മെസ്സേജിലെ വരികൾ വേർതിരിക്കുന്നു
     lines = message.text.split("\n")
     first_line = lines[0].split(" ")
     
@@ -40,22 +42,79 @@ async def custom_button_broadcast(client: Client, message: Message):
 
     # ബട്ടണുകൾ ഉണ്ടാക്കുന്നു
     buttons = []
-    for line in lines[1:]: # രണ്ടാമത്തെ വരി മുതലുള്ളവ ബട്ടണുകൾ ആക്കുന്നു
+    for line in lines[1:]: 
         if "|" in line:
             btn_name, btn_link = line.split("|", 1)
-            # ഒരു വരിയിൽ ഒരു ബട്ടൺ എന്ന രീതിയിൽ സെറ്റ് ചെയ്യുന്നു
             buttons.append([InlineKeyboardButton(btn_name.strip(), url=btn_link.strip())])
 
     reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
     
-    try:
-        await client.copy_message(chat_id=target, from_chat_id=message.chat.id, message_id=message.reply_to_message.id, reply_markup=reply_markup)
-        await message.reply_text(f"✅ Broadcasted successfully with {len(buttons)} custom buttons!")
-    except Exception as e:
-        await message.reply_text(f"❌ Error: {e}")
+    # ഒരു ചാനലിലേക്കാണ് അയക്കുന്നതെങ്കിൽ (Target ഒരു ചാനൽ/ഗ്രൂപ്പ് ആണെങ്കിൽ)
+    if isinstance(target, (int, str)):
+        try:
+            sent_msg = await client.copy_message(chat_id=target, from_chat_id=message.chat.id, message_id=message.reply_to_message.id, reply_markup=reply_markup)
+            await message.reply_text(f"✅ Broadcasted successfully with {len(buttons)} custom buttons!")
+        except Exception as e:
+            await message.reply_text(f"❌ Error: {e}")
+    else:
+        pass
+
+    # ബോട്ട് വഴി രജിസ്റ്റർ ചെയ്ത എല്ലാ യൂസർമാർക്കും ബ്രോഡ്കാസ്റ്റ് അയക്കണമെങ്കിൽ താഴെ കൊടുത്തിരിക്കുന്ന ലോജിക് ഉപയോഗിക്കാം:
+    # (ഉദാഹരണത്തിന് എല്ലാ യൂസർമാർക്കും അയക്കുമ്പോൾ ഡിലീറ്റ് ചെയ്യാൻ സേവ് ചെയ്യേണ്ടത് ഇങ്ങനെയാണ്):
+    status_msg = await message.reply_text("📡 Broadcasting to all users in database...")
+    sent_messages = []
+    success = 0
+    
+    async for user in db.users.find():
+        try:
+            sent_msg = await client.copy_message(
+                chat_id=user["user_id"], 
+                from_chat_id=message.chat.id, 
+                message_id=message.reply_to_message.id, 
+                reply_markup=reply_markup
+            )
+            sent_messages.append({"chat_id": user["user_id"], "message_id": sent_msg.id})
+            success += 1
+            await asyncio.sleep(0.03)
+        except Exception:
+            pass
+
+    # ഡിലീറ്റ് ചെയ്യാൻ വേണ്ടി മെസ്സേജ് ഐഡികൾ ഡാറ്റാബേസിൽ സേവ് ചെയ്യുന്നു
+    if sent_messages:
+        await db.broadcast_logs.update_one(
+            {"_id": "latest_broadcast"},
+            {"$set": {"messages": sent_messages}},
+            upsert=True
+        )
+
+    await status_msg.edit_text(f"✅ **Broadcast Completed!**\nSent to `{success}` users.\n\n*(You can delete this broadcast anytime using `/delete_broadcast`)*")
 
 
-# 2. വൈറൽ ടാസ്ക് ബ്രോഡ്കാസ്റ്റ് (Share 3 times)
+# 2. ബ്രോഡ്കാസ്റ്റ് ചെയ്ത എല്ലാ മെസ്സേജുകളും ഡിലീറ്റ് ചെയ്യാനുള്ള കമാൻഡ്
+@Client.on_message(filters.command("delete_broadcast") & filters.private)
+async def delete_all_broadcast(client: Client, message: Message):
+    log = await db.broadcast_logs.find_one({"_id": "latest_broadcast"})
+    if not log or not log.get("messages"):
+        return await message.reply_text("❌ No recent broadcast found to delete!")
+    
+    status_msg = await message.reply_text("⏳ Deleting broadcast from all users...")
+    
+    deleted_count = 0
+    for item in log["messages"]:
+        try:
+            await client.delete_messages(chat_id=item["chat_id"], message_ids=item["message_id"])
+            deleted_count += 1
+            await asyncio.sleep(0.04) # Telegram FloodWait ഒഴിവാക്കാൻ
+        except Exception:
+            pass
+            
+    # ഡിലീറ്റ് ചെയ്തു കഴിഞ്ഞാൽ ഡാറ്റാബേസ് ക്ലിയർ ചെയ്യാം
+    await db.broadcast_logs.delete_one({"_id": "latest_broadcast"})
+    
+    await status_msg.edit_text(f"✅ **Broadcast successfully deleted!**\nRemoved from `{deleted_count}` chats.")
+
+
+# 3. വൈറൽ ടാസ്ക് ബ്രോഡ്കാസ്റ്റ് (Share 3 times)
 @Client.on_message(filters.command("viral") & filters.private)
 async def viral_broadcast(client: Client, message: Message):
     if len(message.command) < 2:
@@ -100,3 +159,4 @@ async def handle_group_task(client: Client, callback_query: CallbackQuery):
         await callback_query.answer("🎉 Congratulations! Redirecting to VIP...", url=vip_url)
     else:
         await callback_query.answer("You have already completed the task! Redirecting to VIP...", url=vip_url)
+Redirecting to VIP...", url=vip_url)
