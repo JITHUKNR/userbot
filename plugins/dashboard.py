@@ -25,8 +25,9 @@ def get_group_menu():
         [InlineKeyboardButton("🔙 Back", callback_data="menu_main")]
     ])
 
-async def get_channel_list_menu():
-    channels = await db.channels.find().to_list(length=100)
+async def get_channel_list_menu(user_id: int):
+    # ആ യൂസറുടെ ചാനലുകൾ മാത്രം ഫിൽട്ടർ ചെയ്ത് എടുക്കുന്നു
+    channels = await db.channels.find({"owner_id": user_id}).to_list(length=100)
     buttons = [[InlineKeyboardButton("➕ Add channel", callback_data="add_channel")]]
     for ch in channels:
         title = ch.get("title", "Channel")
@@ -162,6 +163,7 @@ async def handle_forwarded_channel(client: Client, message: Message):
             {"chat_id": chat_id},
             {"$set": {
                 "chat_id": chat_id,
+                "owner_id": message.from_user.id,  # ചാനൽ ആഡ് ചെയ്തയാളുടെ ഐഡി
                 "title": title,
                 "app_accept": True,
                 "auto_approve": False,
@@ -306,7 +308,7 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         await callback_query.edit_message_text("🛡 **Group Management**\n\nClick a tool below:", reply_markup=get_group_menu())
     
     elif data == "menu_channel":
-        markup = await get_channel_list_menu()
+        markup = await get_channel_list_menu(user_id) # user_id നൽകുക
         await callback_query.edit_message_text(
             "**Welcome!**\n\n**Your channels:**",
             reply_markup=markup
