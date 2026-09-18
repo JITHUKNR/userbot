@@ -4,7 +4,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, 
 from database import db
 
 USER_STATE = {}
-OWNER_ID = 7567364364  # നിങ്ങളുടെ ശരിയായ Telegram User ID ഇവിടെ നൽകുക
+OWNER_ID = 7567364364
 
 def get_main_menu():
     return InlineKeyboardMarkup([
@@ -12,6 +12,7 @@ def get_main_menu():
          InlineKeyboardButton("📢 Channel Control", callback_data="menu_channel")],
         [InlineKeyboardButton("📡 Broadcast System", callback_data="menu_broadcast"),
          InlineKeyboardButton("🚀 Viral Share Task", callback_data="menu_viral")],
+        [InlineKeyboardButton("⚙️ Public Start Settings", callback_data="menu_public_start")],
         [InlineKeyboardButton("Close Dashboard ❌", callback_data="close_menu")]
     ])
 
@@ -25,6 +26,26 @@ def get_group_menu():
          InlineKeyboardButton("🔓 Unlock", callback_data="help_unlock")],
         [InlineKeyboardButton("🔙 Back", callback_data="menu_main")]
     ])
+
+async def get_public_start_panel():
+    settings = await db.channels.database["bot_settings"].find_one({"_id": "public_start"}) or {}
+    text = settings.get("text", "👋 **Hello! Welcome to our Bot.**\n\nClick the button below to join our official channel and access exclusive contents!")
+    btn_name = settings.get("btn_name", "🔞 18+ Video Free")
+    btn_url = settings.get("btn_url", "https://t.me/telegram")
+
+    msg = (
+        "⚙️ **Public Start Message Settings**\n\n"
+        f"📝 **Current Message:**\n{text}\n\n"
+        f"🔘 **Button Name:** `{btn_name}`\n"
+        f"🔗 **Button Link:** `{btn_url}`"
+    )
+    buttons = [
+        [InlineKeyboardButton("✍️ Change Message Text", callback_data="edit_pub_text")],
+        [InlineKeyboardButton("🔘 Change Button Name", callback_data="edit_pub_btn")],
+        [InlineKeyboardButton("🔗 Change Button Link", callback_data="edit_pub_url")],
+        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="menu_main")]
+    ]
+    return msg, InlineKeyboardMarkup(buttons)
 
 async def get_channel_list_menu(user_id: int):
     channels = await db.channels.find({"owner_id": user_id}).to_list(length=100)
@@ -43,7 +64,6 @@ async def get_channel_panel(client: Client, chat_id: int):
     
     title = ch.get("title", "Channel")
     
-    # പെൻഡിങ് റിക്വസ്റ്റുകളുടെ എണ്ണം ഡാറ്റാബേസിൽ നിന്ന് എടുക്കുന്നു
     try:
         pending_count = await db.channels.database["pending_requests"].count_documents({"chat_id": chat_id})
     except Exception:
@@ -148,7 +168,13 @@ def get_viral_menu():
 @Client.on_message(filters.command(["start", "menu"]) & filters.private)
 async def start_menu(client: Client, message: Message):
     if message.from_user.id != OWNER_ID:
-        return await message.reply_text("⛔ **നിങ്ങൾക്ക് ഈ ബോട്ട് നിയന്ത്രിക്കാൻ അനുവാദമില്ല.**")
+        settings = await db.channels.database["bot_settings"].find_one({"_id": "public_start"}) or {}
+        text = settings.get("text", "👋 **Hello! Welcome to our Bot.**\n\nClick the button below to join our official channel and access exclusive contents!")
+        btn_name = settings.get("btn_name", "🔞 18+ Video Free")
+        btn_url = settings.get("btn_url", "https://t.me/telegram")
+
+        join_btn = InlineKeyboardMarkup([[InlineKeyboardButton(btn_name, url=btn_url)]])
+        return await message.reply_text(text, reply_markup=join_btn)
 
     text = (
         "👑 **ULTIMATE ADMIN CONTROL PANEL**\n\n"
@@ -223,6 +249,37 @@ async def handle_text_inputs(client: Client, message: Message):
             txt, markup = await get_farewell_panel(chat_id)
             await message.reply_text("✅ **Farewell message updated successfully!**", reply_markup=markup)
 
+        elif action == "edit_pub_text":
+            await db.channels.database["bot_settings"].update_one(
+                {"_id": "public_start"},
+                {"$set": {"text": text_received}},
+                upsert=True
+            )
+            del USER_STATE[user_id]
+            txt, markup = await get_public_start_panel()
+            await message.reply_text("✅ **Start message updated successfully!**", reply_markup=markup)
+
+        elif action == "edit_pub_btn":
+            await db.channels.database["bot_settings"].update_one(
+                {"_id": "public_start"},
+                {"$set": {"btn_name": text_received}},
+                upsert=True
+            )
+            del USER_STATE[user_id]
+            txt, markup = await get_public_start_panel()
+            await message.reply_text("✅ **Button name updated successfully!**", reply_markup=markup)
+
+        elif action == "edit_pub_url":
+            url_to_save = text_received if text_received.startswith("http://") or text_received.startswith("https://") else f"https://{text_received}"
+            await db.channels.database["bot_settings"].update_one(
+                {"_id": "public_start"},
+                {"$set": {"btn_url": url_to_save}},
+                upsert=True
+            )
+            del USER_STATE[user_id]
+            txt, markup = await get_public_start_panel()
+            await message.reply_text("✅ **Button link updated successfully!**", reply_markup=markup)
+
 @Client.on_chat_join_request()
 async def handle_incoming_join_request(client: Client, request):
     chat_id = request.chat.id
@@ -232,7 +289,6 @@ async def handle_incoming_join_request(client: Client, request):
     if not ch or not ch.get("app_accept", True):
         return
 
-    # വരുന്ന റിക്വസ്റ്റ് പെൻഡിങ് ലിസ്റ്റിൽ സേവ് ചെയ്യുന്നു
     await db.channels.database["pending_requests"].update_one(
         {"chat_id": chat_id, "user_id": user_id},
         {"$set": {"chat_id": chat_id, "user_id": user_id}},
@@ -269,11 +325,7 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         chat_id = int(data.split("verify_join_")[1])
         try:
             await client.approve_chat_join_request(chat_id, user_id)
-            
-            # പെൻഡിങ് ലിസ്റ്റിൽ നിന്ന് നീക്കം ചെയ്യുന്നു
             await db.channels.database["pending_requests"].delete_one({"chat_id": chat_id, "user_id": user_id})
-            
-            # ബ്രോഡ്കാസ്റ്റിനായി യൂസറുടെ ഐഡി ഡാറ്റാബേസിൽ സേവ് ചെയ്യുന്നു
             await db.channels.database["users"].update_one({"user_id": user_id}, {"$set": {"user_id": user_id}}, upsert=True)
             
             msg = await callback_query.edit_message_text("✅ **Verification successful! You have been accepted to the channel.**")
@@ -286,7 +338,6 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
                 except Exception:
                     pass
             
-            # 10 സെക്കൻഡിനു ശേഷം വെരിഫിക്കേഷൻ മെസ്സേജ് തനിയെ ഡിലീറ്റ് ആകുന്നു
             asyncio.create_task(delete_message_safely(msg))
             
         except Exception as e:
@@ -300,7 +351,6 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
                 await callback_query.answer(f"Error: {e}", show_alert=True)
         return
 
-    # നിങ്ങൾ അല്ലാതെ വേറെ ആരെങ്കിലും ഡാഷ്‌ബോർഡ് ബട്ടൺ ഞെക്കിയാൽ തടയുന്നു
     if user_id != OWNER_ID:
         return await callback_query.answer("⛔ നിങ്ങൾക്ക് ഈ ബോട്ട് നിയന്ത്രിക്കാൻ അനുവാദമില്ല!", show_alert=True)
 
@@ -324,6 +374,31 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         await callback_query.edit_message_text(
             "**Welcome!**\n\n**Your channels:**",
             reply_markup=markup
+        )
+
+    elif data == "menu_public_start":
+        text, markup = await get_public_start_panel()
+        await callback_query.edit_message_text(text, reply_markup=markup)
+
+    elif data == "edit_pub_text":
+        USER_STATE[user_id] = {"action": "edit_pub_text"}
+        await callback_query.edit_message_text(
+            "📝 **Send the new Public Welcome Message in your next text:**",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Cancel", callback_data="menu_public_start")]])
+        )
+
+    elif data == "edit_pub_btn":
+        USER_STATE[user_id] = {"action": "edit_pub_btn"}
+        await callback_query.edit_message_text(
+            "🔘 **Send the new Button Name in your next text:**",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Cancel", callback_data="menu_public_start")]])
+        )
+
+    elif data == "edit_pub_url":
+        USER_STATE[user_id] = {"action": "edit_pub_url"}
+        await callback_query.edit_message_text(
+            "🔗 **Send the new Channel/Target Link in your next text (e.g. https://t.me/...):**",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Cancel", callback_data="menu_public_start")]])
         )
 
     elif data == "add_channel":
@@ -473,7 +548,6 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
     elif data == "menu_viral":
         await callback_query.edit_message_text("🚀 **Viral Marketing Task**\n\nThe 'Share 3 Times to Unlock' feature:", reply_markup=get_viral_menu())
 
-    # Help Texts
     elif data == "help_broadcast":
         text = (
             "📡 **Custom Button Broadcast**\n\n"
