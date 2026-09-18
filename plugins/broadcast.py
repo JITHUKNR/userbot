@@ -2,6 +2,8 @@ import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
 from database import db
+BOT_OWNER_ID = 7567364364  # ഇവിടെ നിങ്ങളുടെ യഥാർത്ഥ Telegram User ID നൽകുക
+
 
 task_settings = {
     "share_link": "https://t.me/WETFLAX", 
@@ -11,6 +13,9 @@ group_user_clicks = {}
 
 @Client.on_message(filters.command("setlinks") & filters.private)
 async def set_task_links(client: Client, message: Message):
+    if message.from_user.id != BOT_OWNER_ID:
+        return await message.reply_text("❌ ഈ കമാൻഡ് ഉപയോഗിക്കാൻ ബോട്ട് ഓണർക്ക് മാത്രമേ അനുവാദമുള്ളൂ!")
+
     if len(message.command) < 3:
         return await message.reply_text("Usage: `/setlinks [Share Link] [VIP Group Link]`")
     task_settings["share_link"] = message.command[1]
@@ -21,6 +26,9 @@ async def set_task_links(client: Client, message: Message):
 # 1. കസ്റ്റം ബട്ടണുകൾ വച്ചുള്ള ബ്രോഡ്കാസ്റ്റ് (ഡിലീറ്റ് ചെയ്യാവുന്ന ഫീച്ചറോട് കൂടി)
 @Client.on_message(filters.command("broadcast") & filters.private)
 async def custom_button_broadcast(client: Client, message: Message):
+    if message.from_user.id != BOT_OWNER_ID:
+        return await message.reply_text("❌ ഈ കമാൻഡ് ഉപയോഗിക്കാൻ ബോട്ട് ഓണർക്ക് മാത്രമേ അനുവാദമുള്ളൂ!")
+
     if not message.reply_to_message:
         return await message.reply_text("Please reply to a photo/video/text to broadcast it.")
 
@@ -93,6 +101,9 @@ async def custom_button_broadcast(client: Client, message: Message):
 # 2. ബ്രോഡ്കാസ്റ്റ് ചെയ്ത എല്ലാ മെസ്സേജുകളും ഡിലീറ്റ് ചെയ്യാനുള്ള കമാൻഡ്
 @Client.on_message(filters.command("delete_broadcast") & filters.private)
 async def delete_all_broadcast(client: Client, message: Message):
+    if message.from_user.id != BOT_OWNER_ID:
+        return await message.reply_text("❌ ഈ കമാൻഡ് ഉപയോഗിക്കാൻ ബോട്ട് ഓണർക്ക് മാത്രമേ അനുവാദമുള്ളൂ!")
+
     log = await db.channels.database["broadcast_logs"].find_one({"_id": "latest_broadcast"})
     if not log or not log.get("messages"):
         return await message.reply_text("❌ No recent broadcast found to delete!")
