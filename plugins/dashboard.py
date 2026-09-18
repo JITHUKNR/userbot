@@ -4,6 +4,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, 
 from database import db
 
 USER_STATE = {}
+OWNER_ID = 7567364364  # നിങ്ങളുടെ ശരിയായ Telegram User ID ഇവിടെ നൽകുക
 
 def get_main_menu():
     return InlineKeyboardMarkup([
@@ -26,7 +27,6 @@ def get_group_menu():
     ])
 
 async def get_channel_list_menu(user_id: int):
-    # ആ യൂസറുടെ ചാനലുകൾ മാത്രം ഫിൽട്ടർ ചെയ്ത് എടുക്കുന്നു
     channels = await db.channels.find({"owner_id": user_id}).to_list(length=100)
     buttons = [[InlineKeyboardButton("➕ Add channel", callback_data="add_channel")]]
     for ch in channels:
@@ -147,6 +147,9 @@ def get_viral_menu():
 
 @Client.on_message(filters.command(["start", "menu"]) & filters.private)
 async def start_menu(client: Client, message: Message):
+    if message.from_user.id != OWNER_ID:
+        return await message.reply_text("⛔ **നിങ്ങൾക്ക് ഈ ബോട്ട് നിയന്ത്രിക്കാൻ അനുവാദമില്ല.**")
+
     text = (
         "👑 **ULTIMATE ADMIN CONTROL PANEL**\n\n"
         "Welcome to your Master Bot.\nSelect a category below:"
@@ -155,6 +158,9 @@ async def start_menu(client: Client, message: Message):
 
 @Client.on_message(filters.forwarded & filters.private)
 async def handle_forwarded_channel(client: Client, message: Message):
+    if message.from_user.id != OWNER_ID:
+        return await message.reply_text("⛔ **ചാനലുകൾ കണക്റ്റ് ചെയ്യാൻ നിങ്ങൾക്ക് അനുവാദമില്ല!**")
+
     if message.forward_from_chat and message.forward_from_chat.type.name in ["CHANNEL", "SUPERGROUP"]:
         chat_id = message.forward_from_chat.id
         title = message.forward_from_chat.title
@@ -163,7 +169,7 @@ async def handle_forwarded_channel(client: Client, message: Message):
             {"chat_id": chat_id},
             {"$set": {
                 "chat_id": chat_id,
-                "owner_id": message.from_user.id,  # ചാനൽ ആഡ് ചെയ്തയാളുടെ ഐഡി
+                "owner_id": message.from_user.id,
                 "title": title,
                 "app_accept": True,
                 "auto_approve": False,
@@ -184,6 +190,9 @@ async def handle_forwarded_channel(client: Client, message: Message):
 @Client.on_message(filters.text & filters.private & ~filters.forwarded & ~filters.command(["start", "menu", "update"]))
 async def handle_text_inputs(client: Client, message: Message):
     user_id = message.from_user.id
+    if user_id != OWNER_ID:
+        return
+
     if user_id in USER_STATE:
         state_data = USER_STATE[user_id]
         action = state_data.get("action")
@@ -256,13 +265,6 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
     data = callback_query.data
     user_id = callback_query.from_user.id
 
-    if user_id in USER_STATE and data.startswith("cancel_state_"):
-        del USER_STATE[user_id]
-        chat_id = int(data.split("cancel_state_")[1])
-        text, markup = await get_channel_panel(client, chat_id)
-        await callback_query.edit_message_text(text, reply_markup=markup)
-        return
-
     if data.startswith("verify_join_"):
         chat_id = int(data.split("verify_join_")[1])
         try:
@@ -298,6 +300,16 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
                 await callback_query.answer(f"Error: {e}", show_alert=True)
         return
 
+    # നിങ്ങൾ അല്ലാതെ വേറെ ആരെങ്കിലും ഡാഷ്‌ബോർഡ് ബട്ടൺ ഞെക്കിയാൽ തടയുന്നു
+    if user_id != OWNER_ID:
+        return await callback_query.answer("⛔ നിങ്ങൾക്ക് ഈ ബോട്ട് നിയന്ത്രിക്കാൻ അനുവാദമില്ല!", show_alert=True)
+
+    if user_id in USER_STATE and data.startswith("cancel_state_"):
+        del USER_STATE[user_id]
+        chat_id = int(data.split("cancel_state_")[1])
+        text, markup = await get_channel_panel(client, chat_id)
+        await callback_query.edit_message_text(text, reply_markup=markup)
+        return
 
     if data == "menu_main":
         await callback_query.edit_message_text(
@@ -308,7 +320,7 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         await callback_query.edit_message_text("🛡 **Group Management**\n\nClick a tool below:", reply_markup=get_group_menu())
     
     elif data == "menu_channel":
-        markup = await get_channel_list_menu(user_id) # user_id നൽകുക
+        markup = await get_channel_list_menu(user_id)
         await callback_query.edit_message_text(
             "**Welcome!**\n\n**Your channels:**",
             reply_markup=markup
@@ -453,7 +465,6 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         chat_id = int(data.split("remove_ch_")[1])
         await db.channels.delete_one({"chat_id": chat_id})
         await callback_query.answer("Channel removed from bot.", show_alert=True)
-        # ഇവിടെ user_id പാസ്സ് ചെയ്തു നൽകുക:
         markup = await get_channel_list_menu(user_id)
         await callback_query.edit_message_text("**Welcome!**\n\n**Your channels:**", reply_markup=markup)
 
@@ -505,4 +516,3 @@ async def delete_message_safely(msg):
         await msg.delete()
     except Exception:
         pass
-                
