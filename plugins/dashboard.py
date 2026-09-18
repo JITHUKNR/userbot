@@ -453,7 +453,8 @@ async def handle_all_callbacks(client: Client, callback_query: CallbackQuery):
         chat_id = int(data.split("remove_ch_")[1])
         await db.channels.delete_one({"chat_id": chat_id})
         await callback_query.answer("Channel removed from bot.", show_alert=True)
-        markup = await get_channel_list_menu()
+        # ഇവിടെ user_id പാസ്സ് ചെയ്തു നൽകുക:
+        markup = await get_channel_list_menu(user_id)
         await callback_query.edit_message_text("**Welcome!**\n\n**Your channels:**", reply_markup=markup)
 
     elif data == "menu_broadcast":
